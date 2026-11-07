@@ -7,9 +7,8 @@ from pydantic import BaseModel
 import requests
 from openai import OpenAI
 
-# -------------------------------------------------------------
-# 1. SCHEMAS
-# -------------------------------------------------------------
+# DO NOT instantiate client = OpenAI() here!
+
 class CompetitorItem(BaseModel):
     company_name: str
     website_domain: str
@@ -28,26 +27,17 @@ class CreativeBrief(BaseModel):
     primary_text_draft: str
     visual_execution_idea: str
 
-
-# -------------------------------------------------------------
-# 2. PIPELINE FUNCTIONS (Clients initialized inside functions)
-# -------------------------------------------------------------
 def discover_competitors(brand_name: str, product_description: str) -> list[dict]:
-    # Instantiated at call time so it uses the environment key
+    # Instantiated dynamically when function is called
     client = OpenAI()
     system_prompt = "Identify 3-5 direct competitors actively running paid ads."
     user_prompt = f"Brand: {brand_name}\nDescription: {product_description}"
-    
     response = client.beta.chat.completions.parse(
         model="gpt-4o",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
+        messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
         response_format=CompetitorDiscoveryResult,
     )
     return [c.model_dump() for c in response.choices[0].message.parsed.suggested_competitors]
-
 
 class MetaAdLongevityEngine:
     def __init__(self, meta_access_token: str):
@@ -93,12 +83,10 @@ class MetaAdLongevityEngine:
             })
         return pd.DataFrame(processed)
 
-
 def generate_brand_brief(ad_record: dict, brand_profile: str) -> dict:
-    # Instantiated at call time
+    # Instantiated dynamically when function is called
     client = OpenAI()
     prompt = f"Deconstruct competitor ad and adapt for brand:\nAd: {ad_record}\nBrand: {brand_profile}"
-    
     response = client.beta.chat.completions.parse(
         model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
@@ -106,13 +94,12 @@ def generate_brand_brief(ad_record: dict, brand_profile: str) -> dict:
     )
     return response.choices[0].message.parsed.model_dump()
 
-
 def run_end_to_end_competitor_pipeline(
     brand_name: str,
     product_description: str,
     meta_access_token: str,
     manual_overrides: list[str] = None
-):
+) -> pd.DataFrame:
     brand_profile = f"Brand: {brand_name}\nDescription: {product_description}"
     target_page_ids = manual_overrides or ["15087023444"]
 
@@ -125,7 +112,7 @@ def run_end_to_end_competitor_pipeline(
             all_scored.append(df)
 
     if not all_scored:
-        return
+        return pd.DataFrame()
 
     master_df = pd.concat(all_scored, ignore_index=True)
     top_ads = master_df.to_dict(orient="records")
@@ -135,4 +122,6 @@ def run_end_to_end_competitor_pipeline(
         brief = generate_brand_brief(ad, brand_profile)
         briefs.append({**ad, **brief})
 
-    pd.DataFrame(briefs).to_csv("master_creative_execution_briefs.csv", index=False)
+    results_df = pd.DataFrame(briefs)
+    results_df.to_csv("master_creative_execution_briefs.csv", index=False)
+    return results_df
