@@ -47,7 +47,7 @@ def discover_competitors(brand_name: str, product_description: str) -> list[dict
 
     try:
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -198,23 +198,10 @@ def generate_brand_brief(ad_record: dict, brand_profile: str) -> dict:
         "You are an expert direct-response creative director. "
         "Deconstruct winning competitor ad hooks and adapt them into custom creative briefs for the target brand."
     )
-    user_prompt = f"""
---- COMPETITOR WINNING AD ---
-Competitor: {ad_record.get('page_name')}
-Days Active: {ad_record.get('days_active')} days
-Headline: {ad_record.get('headline')}
-Primary Copy: {ad_record.get('primary_text')}
-
---- MY BRAND PROFILE ---
-{brand_profile}
-
---- INSTRUCTIONS ---
-Deconstruct and return a single valid JSON object with the following exact keys:
-extracted_hook, hook_type, emotional_trigger, adapted_hook_1, adapted_hook_2, adapted_hook_3, primary_text_draft, visual_execution_idea.
-"""
+    user_prompt = f"COMPETITOR WINNING AD:\nCompetitor: {ad_record.get('page_name')}\nDays Active: {ad_record.get('days_active')}\nHeadline: {ad_record.get('headline')}\nPrimary Copy: {ad_record.get('primary_text')}\n\nMY BRAND PROFILE:\n{brand_profile}\n\nINSTRUCTIONS:\nDeconstruct and return a single valid JSON object with exact keys: extracted_hook, hook_type, emotional_trigger, adapted_hook_1, adapted_hook_2, adapted_hook_3, primary_text_draft, visual_execution_idea."
 
     response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
@@ -256,7 +243,6 @@ def run_end_to_end_competitor_pipeline(
     top_ads = master_df.to_dict(orient="records")
 
     briefs = []
-    # Deconstruct top 3 longest-running ads
     for ad in top_ads[:3]:
         brief = generate_brand_brief(ad, brand_profile)
         briefs.append({**ad, **brief})
