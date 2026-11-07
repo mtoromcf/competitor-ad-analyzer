@@ -28,10 +28,10 @@ with st.sidebar:
         type="password",
         value=os.getenv("GROQ_API_KEY", ""),
     )
-    meta_input = st.text_input(
-        "Meta Graph Access Token",
+    socialcrawl_input = st.text_input(
+        "SocialCrawl API Key",
         type="password",
-        value=os.getenv("META_ACCESS_TOKEN", ""),
+        value=os.getenv("SOCIALCRAWL_API_KEY", ""),
     )
 
 # Input Form
