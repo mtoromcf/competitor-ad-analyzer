@@ -3,8 +3,8 @@ import pandas as pd
 import streamlit as st
 
 # Automatically bridge Streamlit Secrets to OS environment variables
-if "OPENAI_API_KEY" in st.secrets:
-    os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
+if "GROQ_API_KEY" in st.secrets:
+    os.environ["GROQ_API_KEY"] = st.secrets["GROQ_API_KEY"]
 
 if "META_ACCESS_TOKEN" in st.secrets:
     os.environ["META_ACCESS_TOKEN"] = st.secrets["META_ACCESS_TOKEN"]
@@ -23,10 +23,10 @@ st.markdown(
 # Sidebar - Key Configuration
 with st.sidebar:
     st.header("🔑 API Configurations")
-    openai_input = st.text_input(
-        "OpenAI API Key",
+    groq_input = st.text_input(
+        "Groq API Key (Free)",
         type="password",
-        value=os.getenv("OPENAI_API_KEY", ""),
+        value=os.getenv("GROQ_API_KEY", ""),
     )
     meta_input = st.text_input(
         "Meta Graph Access Token",
@@ -54,19 +54,20 @@ with st.form("brand_form"):
     submit_btn = st.form_submit_button("🚀 Run Ad Intelligence Pipeline")
 
 if submit_btn:
-    api_key = openai_input or os.getenv("OPENAI_API_KEY")
+    groq_key = groq_input or os.getenv("GROQ_API_KEY")
     meta_token = meta_input or os.getenv("META_ACCESS_TOKEN")
 
-    if not api_key or not meta_token:
+    if not groq_key or not meta_token:
         st.error(
             "Missing credentials. Enter your API keys in the sidebar or Streamlit Secrets."
         )
     elif not brand_name or not product_desc:
         st.error("Please fill out your brand name and product description.")
     else:
-        os.environ["OPENAI_API_KEY"] = api_key
+        os.environ["GROQ_API_KEY"] = groq_key
+        os.environ["META_ACCESS_TOKEN"] = meta_token
 
-        with st.spinner("Fetching Meta ad telemetry and generating briefs..."):
+        with st.spinner("Fetching Meta ad telemetry and generating briefs with Groq..."):
             overrides = [manual_override] if manual_override else None
             results_df = run_end_to_end_competitor_pipeline(
                 brand_name=brand_name,

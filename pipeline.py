@@ -5,11 +5,11 @@ import time
 import pandas as pd
 from pydantic import BaseModel
 import requests
-from openai import OpenAI
+from groq import Groq
 
 
 # ==========================================
-# 1. STRUCTURED OUTPUT SCHEMAS
+# 1. STRUCTURED SCHEMAS
 # ==========================================
 class CompetitorItem(BaseModel):
     company_name: str
@@ -33,28 +33,29 @@ class CreativeBrief(BaseModel):
 
 
 # ==========================================
-# 2. COMPETITOR DISCOVERY MODULE
+# 2. FREE COMPETITOR DISCOVERY MODULE (GROQ)
 # ==========================================
 def discover_competitors(brand_name: str, product_description: str) -> list[dict]:
-    """Uses OpenAI to dynamically discover direct competitors running paid ads."""
-    client = OpenAI()
-    system_prompt = (
-        "Identify 3-5 direct competitors actively running paid Meta ads."
-    )
+    groq_key = os.getenv("GROQ_API_KEY")
+    if not groq_key:
+        print("Missing GROQ_API_KEY environment variable.")
+        return []
+
+    client = Groq(api_key=groq_key)
+    system_prompt = "Identify 3-5 direct competitors actively running paid Meta ads. Return response in valid JSON matching key 'suggested_competitors'."
     user_prompt = f"Brand: {brand_name}\nDescription: {product_description}"
+
     try:
-        response = client.beta.chat.completions.parse(
-            model="gpt-4o",
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            response_format=CompetitorDiscoveryResult,
+            response_format={"type": "json_object"},
         )
-        return [
-            c.model_dump()
-            for c in response.choices[0].message.parsed.suggested_competitors
-        ]
+        data = json.loads(response.choices[0].message.content)
+        return data.get("suggested_competitors", [])
     except Exception as e:
         print(f"Competitor discovery error: {e}")
         return []
@@ -72,7 +73,6 @@ class MetaAdLongevityEngine:
     def fetch_page_ads(
         self, target_input: str, country: str = "US", max_pages: int = 2
     ) -> list:
-        """Fetches active ads by Page ID or fallback search terms with mock fallback for unverified accounts."""
         target_str = str(target_input).strip()
 
         params = {
@@ -86,7 +86,6 @@ class MetaAdLongevityEngine:
             "limit": 25,
         }
 
-        # Handle numeric Page IDs vs string Search Terms
         if target_str.isdigit():
             params["search_page_ids"] = target_str
         else:
@@ -98,13 +97,17 @@ class MetaAdLongevityEngine:
                 url, params=params if url == self.base_url else None
             )
 
-            # --- MOCK FALLBACK UNTIL META ID VERIFICATION IS APPROVED ---
+            # --- MOCK FALLBACK FOR UNVERIFIED ACCOUNTS OR TOKEN BLOCKS ---
             if res.status_code != 200:
                 print(
                     f"Meta Graph API ({res.status_code}): {res.text}\n"
                     "--> Bypassing with realistic telemetry payload for pipeline testing."
                 )
-                display_name = target_str.title() if not target_str.isdigit() else "Target Competitor"
+                display_name = (
+                    target_str.title()
+                    if not target_str.isdigit()
+                    else "Target Competitor"
+                )
                 return [
                     {
                         "id": "ad_mock_101",
@@ -151,7 +154,6 @@ class MetaAdLongevityEngine:
         return all_ads
 
     def score_ads(self, ads: list) -> pd.DataFrame:
-        """Calculates ad active duration (longevity) and assigns tiers."""
         processed, now = [], datetime.now(timezone.utc)
         for ad in ads:
             start_str = ad.get("ad_delivery_start_time") or ad.get(
@@ -186,11 +188,12 @@ class MetaAdLongevityEngine:
 
 
 # ==========================================
-# 4. OPENAI BRIEF DECONSTRUCTION
+# 4. FREE BRIEF DECONSTRUCTION (GROQ)
 # ==========================================
 def generate_brand_brief(ad_record: dict, brand_profile: str) -> dict:
-    """Deconstructs competitor winning ad and generates creative brief for target brand."""
-    client = OpenAI()
+    groq_key = os.getenv("GROQ_API_KEY")
+    client = Groq(api_key=groq_key)
+
     system_prompt = (
         "You are an expert direct-response creative director. "
         "Deconstruct winning competitor ad hooks and adapt them into custom creative briefs for the target brand."
@@ -206,18 +209,20 @@ Primary Copy: {ad_record.get('primary_text')}
 {brand_profile}
 
 --- INSTRUCTIONS ---
-Extract the core psychological hook type and adapt 3 hook variations, body copy draft, and a visual execution plan for MY BRAND.
+Deconstruct and return a single valid JSON object with the following exact keys:
+extracted_hook, hook_type, emotional_trigger, adapted_hook_1, adapted_hook_2, adapted_hook_3, primary_text_draft, visual_execution_idea.
 """
 
-    response = client.beta.chat.completions.parse(
-        model="gpt-4o",
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        response_format=CreativeBrief,
+        response_format={"type": "json_object"},
     )
-    return response.choices[0].message.parsed.model_dump()
+
+    return json.loads(response.choices[0].message.content)
 
 
 # ==========================================
@@ -229,7 +234,6 @@ def run_end_to_end_competitor_pipeline(
     meta_access_token: str,
     manual_overrides: list[str] = None,
 ) -> pd.DataFrame:
-    """Executes the full scraper -> longevity scoring -> LLM brief generation flow."""
     brand_profile = f"Brand: {brand_name}\nDescription: {product_description}"
     target_inputs = manual_overrides or ["burgerking"]
 
