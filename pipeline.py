@@ -47,7 +47,7 @@ def discover_competitors(brand_name: str, product_description: str) -> list[dict
 
     try:
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="llama-3.1-70b-versatile",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -210,57 +210,4 @@ Primary Copy: {ad_record.get('primary_text')}
 
 --- INSTRUCTIONS ---
 Deconstruct and return a single valid JSON object with the following exact keys:
-extracted_hook, hook_type, emotional_trigger, adapted_hook_1, adapted_hook_2, adapted_hook_3, primary_text_draft, visual_execution_idea.
-"""
-
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        response_format={"type": "json_object"},
-    )
-
-    return json.loads(response.choices[0].message.content)
-
-
-# ==========================================
-# 5. MASTER EXECUTION PIPELINE
-# ==========================================
-def run_end_to_end_competitor_pipeline(
-    brand_name: str,
-    product_description: str,
-    meta_access_token: str,
-    manual_overrides: list[str] = None,
-) -> pd.DataFrame:
-    brand_profile = f"Brand: {brand_name}\nDescription: {product_description}"
-    target_inputs = manual_overrides or ["burgerking"]
-
-    ad_engine = MetaAdLongevityEngine(meta_access_token=meta_access_token)
-    all_scored = []
-
-    for target in target_inputs:
-        raw_ads = ad_engine.fetch_page_ads(target_input=target, max_pages=2)
-        if raw_ads:
-            df = ad_engine.score_ads(raw_ads)
-            if not df.empty:
-                all_scored.append(df)
-
-    if not all_scored:
-        return pd.DataFrame()
-
-    master_df = pd.concat(all_scored, ignore_index=True)
-    master_df = master_df.sort_values(by="days_active", ascending=False).reset_index(drop=True)
-
-    top_ads = master_df.to_dict(orient="records")
-
-    briefs = []
-    # Deconstruct top 3 longest-running ads
-    for ad in top_ads[:3]:
-        brief = generate_brand_brief(ad, brand_profile)
-        briefs.append({**ad, **brief})
-
-    results_df = pd.DataFrame(briefs)
-    results_df.to_csv("master_creative_execution_briefs.csv", index=False)
-    return results_df
+extracted_hook,
