@@ -44,7 +44,9 @@ class SocialCrawlAdEngine:
     def fetch_page_ads(
         self, search_term: str, country: str = "US", max_pages: int = 1
     ) -> list:
+        # SocialCrawl accepts x-api-key or Bearer token header
         headers = {
+            "x-api-key": self.api_key,
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
@@ -60,6 +62,7 @@ class SocialCrawlAdEngine:
                 self.base_url, headers=headers, params=params, timeout=10
             )
 
+            # Fallback to realistic mock data if token is invalid, empty, or out of credits
             if res.status_code != 200:
                 print(
                     f"SocialCrawl API ({res.status_code}). Bypassing with mock payload for testing."
