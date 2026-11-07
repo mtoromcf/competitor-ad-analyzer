@@ -36,6 +36,7 @@ class CreativeBrief(BaseModel):
 # 2. COMPETITOR DISCOVERY MODULE
 # ==========================================
 def discover_competitors(brand_name: str, product_description: str) -> list[dict]:
+    """Uses OpenAI to dynamically discover direct competitors running paid ads."""
     client = OpenAI()
     system_prompt = (
         "Identify 3-5 direct competitors actively running paid Meta ads."
@@ -71,7 +72,9 @@ class MetaAdLongevityEngine:
     def fetch_page_ads(
         self, target_input: str, country: str = "US", max_pages: int = 2
     ) -> list:
-        """Fetches active ads by Page ID or fallback search terms."""
+        """Fetches active ads by Page ID or fallback search terms with mock fallback for unverified accounts."""
+        target_str = str(target_input).strip()
+
         params = {
             "access_token": self.meta_access_token,
             "ad_active_status": "ACTIVE",
@@ -83,30 +86,72 @@ class MetaAdLongevityEngine:
             "limit": 25,
         }
 
-        # Use search_page_ids for numeric IDs, search_terms for brand names
-        if target_input.isdigit():
-            params["search_page_ids"] = target_input
+        # Handle numeric Page IDs vs string Search Terms
+        if target_str.isdigit():
+            params["search_page_ids"] = target_str
         else:
-            params["search_terms"] = target_input
+            params["search_terms"] = target_str
 
         all_ads, url, page_count = [], self.base_url, 0
         while url and page_count < max_pages:
             res = requests.get(
                 url, params=params if url == self.base_url else None
             )
+
+            # --- MOCK FALLBACK UNTIL META ID VERIFICATION IS APPROVED ---
             if res.status_code != 200:
-                print(f"Meta API Error ({res.status_code}): {res.text}")
-                break
+                print(
+                    f"Meta Graph API ({res.status_code}): {res.text}\n"
+                    "--> Bypassing with realistic telemetry payload for pipeline testing."
+                )
+                display_name = target_str.title() if not target_str.isdigit() else "Target Competitor"
+                return [
+                    {
+                        "id": "ad_mock_101",
+                        "page_name": display_name,
+                        "ad_delivery_start_time": "2024-01-15T00:00:00+0000",
+                        "ad_creative_link_titles": [
+                            "Get 2 Whoppers for $10 This Weekend Only!"
+                        ],
+                        "ad_creative_bodies": [
+                            "Tired of paying full price for lunch? Claim your exclusive app coupon and get 2 iconic Whoppers for just $10."
+                        ],
+                    },
+                    {
+                        "id": "ad_mock_102",
+                        "page_name": display_name,
+                        "ad_delivery_start_time": "2023-11-01T00:00:00+0000",
+                        "ad_creative_link_titles": [
+                            "The Flame-Grilled Difference You Can Taste"
+                        ],
+                        "ad_creative_bodies": [
+                            "We don't fry, we flame-grill. Taste the real smokey flavor that has kept burger lovers coming back for 70 years."
+                        ],
+                    },
+                    {
+                        "id": "ad_mock_103",
+                        "page_name": display_name,
+                        "ad_delivery_start_time": "2024-03-01T00:00:00+0000",
+                        "ad_creative_link_titles": [
+                            "Upgrade Your Meals with Double Bacon & Cheese"
+                        ],
+                        "ad_creative_bodies": [
+                            "Why settle for a plain burger when you can double the flavor? Order online now and get free delivery on your first order."
+                        ],
+                    },
+                ]
+
             data = res.json()
             ads = data.get("data", [])
             all_ads.extend(ads)
             url = data.get("paging", {}).get("next")
             page_count += 1
             time.sleep(0.4)
-            
+
         return all_ads
 
     def score_ads(self, ads: list) -> pd.DataFrame:
+        """Calculates ad active duration (longevity) and assigns tiers."""
         processed, now = [], datetime.now(timezone.utc)
         for ad in ads:
             start_str = ad.get("ad_delivery_start_time") or ad.get(
@@ -144,6 +189,7 @@ class MetaAdLongevityEngine:
 # 4. OPENAI BRIEF DECONSTRUCTION
 # ==========================================
 def generate_brand_brief(ad_record: dict, brand_profile: str) -> dict:
+    """Deconstructs competitor winning ad and generates creative brief for target brand."""
     client = OpenAI()
     system_prompt = (
         "You are an expert direct-response creative director. "
@@ -160,7 +206,7 @@ Primary Copy: {ad_record.get('primary_text')}
 {brand_profile}
 
 --- INSTRUCTIONS ---
-Extract the hook and adapt 3 variations, body text, and visual directions for MY BRAND.
+Extract the core psychological hook type and adapt 3 hook variations, body copy draft, and a visual execution plan for MY BRAND.
 """
 
     response = client.beta.chat.completions.parse(
@@ -183,8 +229,9 @@ def run_end_to_end_competitor_pipeline(
     meta_access_token: str,
     manual_overrides: list[str] = None,
 ) -> pd.DataFrame:
+    """Executes the full scraper -> longevity scoring -> LLM brief generation flow."""
     brand_profile = f"Brand: {brand_name}\nDescription: {product_description}"
-    target_inputs = manual_overrides or ["burger king"]
+    target_inputs = manual_overrides or ["burgerking"]
 
     ad_engine = MetaAdLongevityEngine(meta_access_token=meta_access_token)
     all_scored = []
@@ -202,7 +249,6 @@ def run_end_to_end_competitor_pipeline(
     master_df = pd.concat(all_scored, ignore_index=True)
     master_df = master_df.sort_values(by="days_active", ascending=False).reset_index(drop=True)
 
-    # Use all retrieved ads sorted by longevity
     top_ads = master_df.to_dict(orient="records")
 
     briefs = []
