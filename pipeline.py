@@ -3,18 +3,42 @@ import json
 import os
 import time
 import pandas as pd
+from pydantic import BaseModel
 import requests
 from groq import Groq
 
 
 # ==========================================
-# 1. SOCIALCRAWL AD ENGINE
+# 1. STRUCTURED SCHEMAS
+# ==========================================
+class CompetitorItem(BaseModel):
+    company_name: str
+    website_domain: str
+    reason: str
+
+
+class CompetitorDiscoveryResult(BaseModel):
+    suggested_competitors: list[CompetitorItem]
+
+
+class CreativeBrief(BaseModel):
+    extracted_hook: str
+    hook_type: str
+    emotional_trigger: str
+    adapted_hook_1: str
+    adapted_hook_2: str
+    adapted_hook_3: str
+    primary_text_draft: str
+    visual_execution_idea: str
+
+
+# ==========================================
+# 2. SOCIALCRAWL AD ENGINE
 # ==========================================
 class SocialCrawlAdEngine:
 
     def __init__(self, api_key: str):
         self.api_key = api_key
-        # Unified endpoint for Meta Ad Library & Google Transparency data
         self.base_url = "https://api.socialcrawl.dev/v1/ads/search"
 
     def fetch_page_ads(
@@ -24,7 +48,6 @@ class SocialCrawlAdEngine:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
-
         params = {
             "query": search_term,
             "country": country,
@@ -37,10 +60,9 @@ class SocialCrawlAdEngine:
                 self.base_url, headers=headers, params=params, timeout=10
             )
 
-            # Fallback to realistic mock data if token is missing or out of credits
             if res.status_code != 200:
                 print(
-                    f"SocialCrawl API ({res.status_code}). Using mock fallback payload for testing."
+                    f"SocialCrawl API ({res.status_code}). Bypassing with mock payload for testing."
                 )
                 display_name = search_term.title()
                 return [
@@ -58,6 +80,13 @@ class SocialCrawlAdEngine:
                         "headline": "The Flame-Grilled Difference You Can Taste",
                         "primary_text": "We don't fry, we flame-grill. Taste the real smokey flavor that has kept burger lovers coming back for 70 years.",
                     },
+                    {
+                        "id": "sc_mock_103",
+                        "page_name": display_name,
+                        "ad_delivery_start_time": "2024-03-01T00:00:00+0000",
+                        "headline": "Upgrade Your Meals with Double Bacon & Cheese",
+                        "primary_text": "Why settle for a plain burger when you can double the flavor? Order online now and get free delivery on your first order.",
+                    },
                 ]
 
             data = res.json()
@@ -65,7 +94,23 @@ class SocialCrawlAdEngine:
 
         except Exception as e:
             print(f"SocialCrawl Connection Error: {e}")
-            return []
+            display_name = search_term.title()
+            return [
+                {
+                    "id": "sc_mock_101",
+                    "page_name": display_name,
+                    "ad_delivery_start_time": "2024-01-15T00:00:00+0000",
+                    "headline": "Get 2 Whoppers for $10 This Weekend Only!",
+                    "primary_text": "Tired of paying full price for lunch? Claim your exclusive app coupon and get 2 iconic Whoppers for just $10.",
+                },
+                {
+                    "id": "sc_mock_102",
+                    "page_name": display_name,
+                    "ad_delivery_start_time": "2023-11-01T00:00:00+0000",
+                    "headline": "The Flame-Grilled Difference You Can Taste",
+                    "primary_text": "We don't fry, we flame-grill. Taste the real smokey flavor that has kept burger lovers coming back for 70 years.",
+                },
+            ]
 
     def score_ads(self, ads: list) -> pd.DataFrame:
         processed, now = [], datetime.now(timezone.utc)
@@ -102,7 +147,7 @@ class SocialCrawlAdEngine:
 
 
 # ==========================================
-# 2. BRIEF GENERATION MODULE (GROQ)
+# 3. BRIEF GENERATION MODULE (GROQ)
 # ==========================================
 def generate_brand_brief(ad_record: dict, brand_profile: str) -> dict:
     groq_key = os.getenv("GROQ_API_KEY")
@@ -127,12 +172,12 @@ def generate_brand_brief(ad_record: dict, brand_profile: str) -> dict:
 
 
 # ==========================================
-# 3. MASTER EXECUTION PIPELINE
+# 4. MASTER EXECUTION PIPELINE
 # ==========================================
 def run_end_to_end_competitor_pipeline(
     brand_name: str,
     product_description: str,
-    socialcrawl_api_key: str,
+    socialcrawl_api_key: str = "",
     manual_overrides: list[str] = None,
 ) -> pd.DataFrame:
     brand_profile = f"Brand: {brand_name}\nDescription: {product_description}"

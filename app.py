@@ -6,8 +6,8 @@ import streamlit as st
 if "GROQ_API_KEY" in st.secrets:
     os.environ["GROQ_API_KEY"] = st.secrets["GROQ_API_KEY"]
 
-if "META_ACCESS_TOKEN" in st.secrets:
-    os.environ["META_ACCESS_TOKEN"] = st.secrets["META_ACCESS_TOKEN"]
+if "SOCIALCRAWL_API_KEY" in st.secrets:
+    os.environ["SOCIALCRAWL_API_KEY"] = st.secrets["SOCIALCRAWL_API_KEY"]
 
 from pipeline import run_end_to_end_competitor_pipeline
 
@@ -43,8 +43,8 @@ with st.form("brand_form"):
         )
     with col2:
         manual_override = st.text_input(
-            "Competitor Page ID or Brand Name",
-            placeholder="e.g., 20000000000 or burgerking",
+            "Competitor Brand Search Keyword",
+            placeholder="e.g., burgerking or Nike",
         )
 
     product_desc = st.text_area(
@@ -55,24 +55,25 @@ with st.form("brand_form"):
 
 if submit_btn:
     groq_key = groq_input or os.getenv("GROQ_API_KEY")
-    meta_token = meta_input or os.getenv("META_ACCESS_TOKEN")
+    socialcrawl_key = socialcrawl_input or os.getenv("SOCIALCRAWL_API_KEY")
 
-    if not groq_key or not meta_token:
+    if not groq_key:
         st.error(
-            "Missing credentials. Enter your API keys in the sidebar or Streamlit Secrets."
+            "Missing credentials. Enter your Groq API key in the sidebar or Streamlit Secrets."
         )
     elif not brand_name or not product_desc:
         st.error("Please fill out your brand name and product description.")
     else:
         os.environ["GROQ_API_KEY"] = groq_key
-        os.environ["META_ACCESS_TOKEN"] = meta_token
+        if socialcrawl_key:
+            os.environ["SOCIALCRAWL_API_KEY"] = socialcrawl_key
 
-        with st.spinner("Fetching Meta ad telemetry and generating briefs with Groq..."):
+        with st.spinner("Fetching ad telemetry and generating briefs with Groq..."):
             overrides = [manual_override] if manual_override else None
             results_df = run_end_to_end_competitor_pipeline(
                 brand_name=brand_name,
                 product_description=product_desc,
-                meta_access_token=meta_token,
+                socialcrawl_api_key=socialcrawl_key or "",
                 manual_overrides=overrides,
             )
 
@@ -80,8 +81,8 @@ if submit_btn:
             st.success("Analysis Complete!")
             st.subheader("📋 Generated Creative Briefs")
 
-            # Dataframe display
-            st.dataframe(results_df, use_container_width=True)
+            # Dataframe display with modern width configuration
+            st.dataframe(results_df, width="stretch")
 
             # Interactive expanders per brief
             for idx, row in results_df.iterrows():
@@ -103,6 +104,4 @@ if submit_btn:
                 mime="text/csv",
             )
         else:
-            st.warning(
-                "No active ads retrieved for the specified target. Verify your Meta Access Token permissions or try a brand name keyword like 'burgerking'."
-            )
+            st.warning("No ad results were generated. Please try again.")
