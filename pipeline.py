@@ -7,9 +7,9 @@ from pydantic import BaseModel
 import requests
 from openai import OpenAI
 
-client = OpenAI()
-
-# Schemas
+# -------------------------------------------------------------
+# 1. SCHEMAS
+# -------------------------------------------------------------
 class CompetitorItem(BaseModel):
     company_name: str
     website_domain: str
@@ -28,15 +28,26 @@ class CreativeBrief(BaseModel):
     primary_text_draft: str
     visual_execution_idea: str
 
+
+# -------------------------------------------------------------
+# 2. PIPELINE FUNCTIONS (Clients initialized inside functions)
+# -------------------------------------------------------------
 def discover_competitors(brand_name: str, product_description: str) -> list[dict]:
+    # Instantiated at call time so it uses the environment key
+    client = OpenAI()
     system_prompt = "Identify 3-5 direct competitors actively running paid ads."
     user_prompt = f"Brand: {brand_name}\nDescription: {product_description}"
+    
     response = client.beta.chat.completions.parse(
         model="gpt-4o",
-        messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
         response_format=CompetitorDiscoveryResult,
     )
     return [c.model_dump() for c in response.choices[0].message.parsed.suggested_competitors]
+
 
 class MetaAdLongevityEngine:
     def __init__(self, meta_access_token: str):
@@ -82,8 +93,12 @@ class MetaAdLongevityEngine:
             })
         return pd.DataFrame(processed)
 
+
 def generate_brand_brief(ad_record: dict, brand_profile: str) -> dict:
+    # Instantiated at call time
+    client = OpenAI()
     prompt = f"Deconstruct competitor ad and adapt for brand:\nAd: {ad_record}\nBrand: {brand_profile}"
+    
     response = client.beta.chat.completions.parse(
         model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
@@ -91,7 +106,7 @@ def generate_brand_brief(ad_record: dict, brand_profile: str) -> dict:
     )
     return response.choices[0].message.parsed.model_dump()
 
-# MASTER ENTRY POINT REQUIRED BY APP.PY
+
 def run_end_to_end_competitor_pipeline(
     brand_name: str,
     product_description: str,
