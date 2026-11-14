@@ -52,7 +52,7 @@ def discover_competitors_with_groq(
         f"Identify up to {max_competitors} top direct competitors (for example, if Target Brand is McDonald's, "
         f"return Burger King, Wendy's, Taco Bell).\n"
         f"Return ONLY a valid JSON object with exact key 'suggested_competitors', containing a list of objects "
-        f"with exact keys: 'company_name' (official brand name), 'search_keyword' (clean brand name to search in Meta Ad Library), "
+        f"with exact keys: 'company_name' (official brand name), 'search_keyword' (official Facebook Page brand name), "
         f"and 'reason' (1-sentence explanation of why they compete)."
     )
 
@@ -74,68 +74,163 @@ def discover_competitors_with_groq(
 
 
 # ==========================================
-# 3. SOCIALCRAWL AD ENGINE
+# 3. SOCIALCRAWL AD ENGINE (2-STEP FUNNEL)
 # ==========================================
 class SocialCrawlAdEngine:
 
     def __init__(self, api_key: str):
         self.api_key = api_key.strip()
-        self.base_url = "https://www.socialcrawl.dev/v1/facebook/adlibrary/search/ads"
+        self.company_search_url = (
+            "https://www.socialcrawl.dev/v1/facebook/adlibrary/search/companies"
+        )
+        self.company_ads_url = (
+            "https://www.socialcrawl.dev/v1/facebook/adlibrary/company/ads"
+        )
+
+    def _extract_items(self, payload: dict) -> list:
+        data_block = payload.get("data", {})
+        if isinstance(data_block, dict):
+            return data_block.get("items", [])
+        if isinstance(data_block, list):
+            return data_block
+        return []
+
+    def resolve_company_page(self, search_term: str) -> tuple[str | None, str]:
+        """Step 1: Resolve brand name into its official Facebook Ad Library pageId."""
+        headers = {
+            "x-api-key": self.api_key,
+            "Accept": "application/json",
+        }
+        params = {"query": search_term}
+
+        try:
+            res = requests.get(
+                self.company_search_url, headers=headers, params=params, timeout=20
+            )
+            if res.status_code != 200:
+                print(
+                    f"SocialCrawl Company Search Error ({res.status_code}) for '{search_term}': {res.text}"
+                )
+                return None, search_term
+
+            payload = res.json()
+            companies = self._extract_items(payload)
+            if not companies:
+                print(f"No Facebook Ad Library page matched '{search_term}'.")
+                return None, search_term
+
+            # Rank candidate pages: prefer exact/substring match and highest follower/like count
+            target_lower = search_term.lower().strip()
+            best_match = companies[0]
+            best_score = -1
+
+            for comp in companies:
+                name = str(
+                    comp.get("name")
+                    or comp.get("page_name")
+                    or comp.get("title")
+                    or ""
+                )
+                name_lower = name.lower().strip()
+                likes = int(
+                    comp.get("likes")
+                    or comp.get("page_like_count")
+                    or comp.get("followers")
+                    or 0
+                )
+                verified_bonus = 10_000_000 if comp.get("verification") or comp.get("is_verified") else 0
+                exact_bonus = 50_000_000 if name_lower == target_lower else (
+                    5_000_000 if target_lower in name_lower else 0
+                )
+                score = exact_bonus + verified_bonus + likes
+
+                if score > best_score:
+                    best_score = score
+                    best_match = comp
+
+            page_id = str(
+                best_match.get("pageId")
+                or best_match.get("page_id")
+                or best_match.get("id")
+                or ""
+            )
+            resolved_name = (
+                best_match.get("name")
+                or best_match.get("page_name")
+                or search_term
+            )
+
+            print(
+                f"Resolved '{search_term}' -> Page: '{resolved_name}' (pageId: {page_id})"
+            )
+            return (page_id if page_id else None), resolved_name
+
+        except Exception as e:
+            print(f"SocialCrawl Company Resolution Exception for '{search_term}': {e}")
+            return None, search_term
 
     def fetch_page_ads(
         self, search_term: str, country: str = "US", max_pages: int = 1
     ) -> list:
+        """Step 2: Fetch active ads belonging strictly to the resolved company pageId."""
         if not self.api_key:
             print("No SocialCrawl API key provided. Using mock fallback.")
             return self._get_mock_ads(search_term)
+
+        page_id, resolved_name = self.resolve_company_page(search_term)
 
         headers = {
             "x-api-key": self.api_key,
             "Accept": "application/json",
         }
         params = {
-            "query": search_term,
             "country": country,
             "status": "ACTIVE",
         }
 
+        if page_id:
+            params["pageId"] = page_id
+        else:
+            params["companyName"] = search_term
+
         try:
             res = requests.get(
-                self.base_url, headers=headers, params=params, timeout=20
+                self.company_ads_url, headers=headers, params=params, timeout=25
             )
 
             if res.status_code != 200:
                 print(
-                    f"SocialCrawl API Error ({res.status_code}): {res.text}\n"
+                    f"SocialCrawl Company Ads Error ({res.status_code}) for '{resolved_name}': {res.text}\n"
                     "--> Bypassing with mock payload."
                 )
-                return self._get_mock_ads(search_term)
+                return self._get_mock_ads(resolved_name)
 
             payload = res.json()
             if not payload.get("success", True):
                 print(f"SocialCrawl Envelope Error: {payload}")
-                return self._get_mock_ads(search_term)
+                return self._get_mock_ads(resolved_name)
 
-            data_block = payload.get("data", {})
-            items = (
-                data_block.get("items", [])
-                if isinstance(data_block, dict)
-                else data_block
-            )
-
+            items = self._extract_items(payload)
             if not items:
-                print(f"SocialCrawl returned 0 ads for '{search_term}'. Using mock fallback.")
-                return self._get_mock_ads(search_term)
+                print(
+                    f"SocialCrawl returned 0 active ads for '{resolved_name}' (pageId={page_id}). Using mock fallback."
+                )
+                return self._get_mock_ads(resolved_name)
+
+            # Attach resolved page name if individual ad objects omit it
+            for item in items:
+                if isinstance(item, dict) and not item.get("page_name"):
+                    item["page_name"] = resolved_name
 
             print(
-                f"SocialCrawl LIVE HIT for '{search_term}': Fetched {len(items)} ads! "
+                f"SocialCrawl LIVE HIT for '{resolved_name}': Fetched {len(items)} ads! "
                 f"(Credits remaining: {payload.get('credits_remaining', 'N/A')})"
             )
             return items
 
         except Exception as e:
             print(f"SocialCrawl Connection Exception: {e}")
-            return self._get_mock_ads(search_term)
+            return self._get_mock_ads(resolved_name)
 
     def _get_mock_ads(self, search_term: str) -> list:
         display_name = search_term.title()
@@ -221,7 +316,12 @@ class SocialCrawlAdEngine:
 
             processed.append(
                 {
-                    "ad_id": str(ad.get("id") or ad.get("ad_archive_id") or ad.get("ad_id") or "unknown"),
+                    "ad_id": str(
+                        ad.get("id")
+                        or ad.get("ad_archive_id")
+                        or ad.get("ad_id")
+                        or "unknown"
+                    ),
                     "page_name": page_name,
                     "days_active": days_active,
                     "tier": (
@@ -290,7 +390,6 @@ def run_end_to_end_competitor_pipeline(
 ) -> tuple[pd.DataFrame, list[dict]]:
     brand_profile = f"Brand: {brand_name}\nDescription: {product_description}"
 
-    # Step A: Determine competitor targets (Manual override vs. Groq Auto-Discovery)
     if manual_overrides:
         discovered_competitors = [
             {
@@ -306,7 +405,6 @@ def run_end_to_end_competitor_pipeline(
             product_description=product_description,
             max_competitors=max_competitors,
         )
-        # Fallback if LLM returns nothing
         if not discovered_competitors:
             discovered_competitors = [
                 {
@@ -316,7 +414,6 @@ def run_end_to_end_competitor_pipeline(
                 }
             ]
 
-    # Step B: Fetch & score ads for each discovered competitor via SocialCrawl
     ad_engine = SocialCrawlAdEngine(api_key=socialcrawl_api_key)
     all_scored = []
 
@@ -336,7 +433,6 @@ def run_end_to_end_competitor_pipeline(
         by="days_active", ascending=False
     ).reset_index(drop=True)
 
-    # Step C: Generate creative briefs for top 3 longest-running ads across competitors
     top_ads = master_df.to_dict(orient="records")
     briefs = []
     for ad in top_ads[:3]:
