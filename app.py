@@ -12,17 +12,17 @@ if "SOCIALCRAWL_API_KEY" in st.secrets:
 from pipeline import run_end_to_end_competitor_pipeline
 
 st.set_page_config(
-    page_title="Competitor Ad Intelligence", page_icon="⚡", layout="wide"
+    page_title="Competitor Ad Intelligence", layout="wide"
 )
 
-st.title("⚡ AI Competitor Ad Intelligence & Brief Generator")
+st.title("AI Competitor Ad Intelligence & Brief Generator")
 st.markdown(
     "Enter your brand—Groq automatically identifies your top competitors, pulls their active ads via SocialCrawl, and generates creative briefs."
 )
 
 # Sidebar - Key Configuration
 with st.sidebar:
-    st.header("🔑 API Configurations")
+    st.header("API Configurations")
     groq_input = st.text_input(
         "Groq API Key (Free)",
         type="password",
@@ -54,7 +54,7 @@ with st.form("brand_form"):
         "Product Description & Positioning",
         placeholder="Fast-food burger chain famous for Big Macs, fries, and value meals...",
     )
-    submit_btn = st.form_submit_button("🚀 Discover Competitors & Generate Briefs")
+    submit_btn = st.form_submit_button("Discover Competitors & Generate Briefs")
 
 if submit_btn:
     groq_key = groq_input or os.getenv("GROQ_API_KEY")
@@ -82,7 +82,7 @@ if submit_btn:
             )
 
         if discovered_competitors:
-            st.subheader("🎯 Targeted Competitors")
+            st.subheader("Targeted Competitors")
             comp_cols = st.columns(len(discovered_competitors))
             for idx, comp in enumerate(discovered_competitors):
                 with comp_cols[idx]:
@@ -92,7 +92,7 @@ if submit_btn:
 
         if results_df is not None and not results_df.empty:
             st.success("Analysis Complete!")
-            st.subheader("📋 Generated Creative Briefs")
+            st.subheader("Generated Creative Briefs")
 
             st.dataframe(results_df, width="stretch")
 
@@ -109,7 +109,7 @@ if submit_btn:
                     st.info(f"**Visual Execution Plan:** {row.get('visual_execution_idea')}")
 
             st.download_button(
-                label="📥 Download Briefs CSV",
+                label="Download Briefs CSV",
                 data=results_df.to_csv(index=False),
                 file_name="competitor_briefs.csv",
                 mime="text/csv",
