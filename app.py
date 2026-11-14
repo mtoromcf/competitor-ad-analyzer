@@ -245,21 +245,21 @@ with st.sidebar:
 
 # Input Form
 with st.form("brand_form"):
-    col1, col2 = st.columns(2)
-    with col1:
-        brand_name = st.text_input(
-            "Your Brand Name", placeholder="e.g., McDonald's"
-        )
-    with col2:
-        manual_override = st.text_input(
-            "Manual Competitor Override (Optional)",
-            placeholder="Leave blank to auto-discover via Groq",
-        )
+    brand_name = st.text_input(
+        "Your Brand Name", placeholder="e.g., McDonald's"
+    )
 
     product_desc = st.text_area(
         "Product Description",
         placeholder="Fast-food burger chain famous for Big Macs, fries, and value meals...",
     )
+
+    with st.expander("Competitor Override (Optional)", expanded=False):
+        manual_override = st.text_input(
+            "Target Specific Competitor",
+            placeholder="e.g., Burger King (leave blank to auto-discover via Groq)",
+        )
+
     submit_btn = st.form_submit_button("Generate Briefs")
 
 if submit_btn:
