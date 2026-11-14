@@ -84,13 +84,20 @@ if submit_btn:
 
         with st.spinner("Identifying competitors with Groq and scanning active ads..."):
             overrides = [manual_override.strip()] if manual_override.strip() else None
-            results_df, discovered_competitors = run_end_to_end_competitor_pipeline(
+            results_df, discovered_competitors, diagnostics = run_end_to_end_competitor_pipeline(
                 brand_name=brand_name,
                 product_description=product_desc,
                 socialcrawl_api_key=socialcrawl_key or "",
                 manual_overrides=overrides,
                 max_competitors=num_competitors,
             )
+
+        # Display live SocialCrawl status & remaining credits
+        credits_left = diagnostics.get("credits_remaining")
+        status_logs = diagnostics.get("status_logs", [])
+        if status_logs:
+            credit_note = f" | SocialCrawl Credits Remaining: {credits_left}" if credits_left is not None else ""
+            st.caption(" • ".join(status_logs) + credit_note)
 
         if discovered_competitors:
             st.subheader("Targeted Competitors")
