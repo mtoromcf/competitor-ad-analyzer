@@ -16,6 +16,29 @@ if "GROQ_API_KEY" in st.secrets:
 if "SOCIALCRAWL_API_KEY" in st.secrets:
     os.environ["SOCIALCRAWL_API_KEY"] = st.secrets["SOCIALCRAWL_API_KEY"]
 
+# Initialize onboarding & form preset session state
+if "show_onboarding" not in st.session_state:
+    st.session_state.show_onboarding = True
+if "brand_name_val" not in st.session_state:
+    st.session_state.brand_name_val = ""
+if "product_desc_val" not in st.session_state:
+    st.session_state.product_desc_val = ""
+
+SAMPLE_PRESETS = {
+    "McDonald's (QSR)": (
+        "McDonald's",
+        "Global fast-food burger chain famous for Big Macs, crispy fries, value meals, and mobile app deals.",
+    ),
+    "AG1 (Health & Wellness)": (
+        "AG1",
+        "Daily foundational nutrition powder with 75 vitamins, minerals, probiotics, and whole-food sourced ingredients.",
+    ),
+    "Warby Parker (DTC Eyewear)": (
+        "Warby Parker",
+        "Direct-to-consumer prescription glasses and sunglasses brand offering affordable designer frames and home try-on.",
+    ),
+}
+
 
 def load_pipeline_function():
     pipeline_path = Path(__file__).parent / "pipeline.py"
@@ -26,6 +49,60 @@ def load_pipeline_function():
 
 
 run_end_to_end_competitor_pipeline = load_pipeline_function()
+
+
+def render_onboarding_guide():
+    """Renders a clean, dismissible 3-step quick-start guide with sample brand presets."""
+    with st.container(border=True):
+        top_col, btn_col = st.columns([5, 1])
+        with top_col:
+            st.subheader("Quick-Start Onboarding Guide")
+            st.caption(
+                "Discover what your competitors are running on Meta, inspect their longest-running winning ads, and generate adapted creative briefs in under 30 seconds."
+            )
+        with btn_col:
+            if st.button("Dismiss Guide", use_container_width=True):
+                st.session_state.show_onboarding = False
+                st.rerun()
+
+        step1, step2, step3 = st.columns(3)
+        with step1:
+            st.markdown("**Step 1: Verify API Keys**")
+            has_groq = bool(os.getenv("GROQ_API_KEY"))
+            has_sc = bool(os.getenv("SOCIALCRAWL_API_KEY"))
+            groq_status = "Connected" if has_groq else "Required in Sidebar"
+            sc_status = (
+                "Connected (Live Meta Data)"
+                if has_sc
+                else "Optional (Uses Mock Fallback if Empty)"
+            )
+            st.markdown(
+                f"- **Groq API:** {groq_status}\n"
+                f"- **SocialCrawl API:** {sc_status}"
+            )
+
+        with step2:
+            st.markdown("**Step 2: Enter Brand Context**")
+            st.markdown(
+                "Provide your brand name and value proposition. Groq automatically identifies your top direct competitors—or use the **Competitor Override** dropdown to target a specific brand."
+            )
+
+        with step3:
+            st.markdown("**Step 3: Inspect Winners & Briefs**")
+            st.markdown(
+                "Review the **Longevity Range Bar** (ads active 45+ days indicate proven winners), preview live video/image creatives, and export adapted hooks to CSV."
+            )
+
+        st.markdown("**Try a Sample Brand Preset:**")
+        preset_cols = st.columns(len(SAMPLE_PRESETS))
+        for idx, (label, (preset_name, preset_desc)) in enumerate(
+            SAMPLE_PRESETS.items()
+        ):
+            with preset_cols[idx]:
+                if st.button(f"Load {label}", key=f"preset_{idx}", use_container_width=True):
+                    st.session_state.brand_name_val = preset_name
+                    st.session_state.product_desc_val = preset_desc
+                    st.rerun()
 
 
 def render_telemetry_charts(master_df: pd.DataFrame):
@@ -226,7 +303,7 @@ st.markdown(
     "Enter your brand—Groq automatically identifies your top competitors, pulls their active ads via SocialCrawl, and generates creative briefs."
 )
 
-# Sidebar - Key Configuration
+# Sidebar - Key Configuration & Onboarding Toggle
 with st.sidebar:
     st.header("API Configurations")
     groq_input = st.text_input(
@@ -243,14 +320,27 @@ with st.sidebar:
         "Auto-Discovered Competitors", min_value=1, max_value=5, value=3
     )
 
+    st.divider()
+    if not st.session_state.show_onboarding:
+        if st.button("Show Onboarding Guide", use_container_width=True):
+            st.session_state.show_onboarding = True
+            st.rerun()
+
+# Render Onboarding Banner when active
+if st.session_state.show_onboarding:
+    render_onboarding_guide()
+
 # Input Form
 with st.form("brand_form"):
     brand_name = st.text_input(
-        "Your Brand Name", placeholder="e.g., McDonald's"
+        "Your Brand Name",
+        value=st.session_state.brand_name_val,
+        placeholder="e.g., McDonald's",
     )
 
     product_desc = st.text_area(
         "Product Description",
+        value=st.session_state.product_desc_val,
         placeholder="Fast-food burger chain famous for Big Macs, fries, and value meals...",
     )
 
@@ -263,6 +353,9 @@ with st.form("brand_form"):
     submit_btn = st.form_submit_button("Generate Briefs")
 
 if submit_btn:
+    st.session_state.brand_name_val = brand_name
+    st.session_state.product_desc_val = product_desc
+
     groq_key = groq_input or os.getenv("GROQ_API_KEY")
     socialcrawl_key = socialcrawl_input or os.getenv("SOCIALCRAWL_API_KEY")
 
@@ -276,6 +369,9 @@ if submit_btn:
         os.environ["GROQ_API_KEY"] = groq_key
         if socialcrawl_key:
             os.environ["SOCIALCRAWL_API_KEY"] = socialcrawl_key
+
+        # Auto-collapse onboarding once user initiates their first analysis
+        st.session_state.show_onboarding = False
 
         with st.spinner("Identifying competitors with Groq and scanning active ads..."):
             overrides = [manual_override.strip()] if manual_override.strip() else None
