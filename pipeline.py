@@ -337,12 +337,10 @@ class SocialCrawlAdEngine:
         image_urls = []
         video_urls = []
 
-        # 1. Check top-level and snapshot image lists
         for container in (ad, snapshot, ext):
             if not isinstance(container, dict):
                 continue
 
-            # Direct image fields
             for img_key in (
                 "image_url",
                 "thumbnail_url",
@@ -354,7 +352,6 @@ class SocialCrawlAdEngine:
                 if isinstance(val, str) and val.startswith("http"):
                     image_urls.append(val)
 
-            # Image arrays
             images = container.get("images")
             if isinstance(images, list):
                 for img in images:
@@ -372,13 +369,11 @@ class SocialCrawlAdEngine:
                                 image_urls.append(u)
                                 break
 
-            # Direct video fields
             for vid_key in ("video_url", "video_hd_url", "video_sd_url"):
                 val = container.get(vid_key)
                 if isinstance(val, str) and val.startswith("http"):
                     video_urls.append(val)
 
-            # Video arrays
             videos = container.get("videos")
             if isinstance(videos, list):
                 for vid in videos:
@@ -394,7 +389,6 @@ class SocialCrawlAdEngine:
                         if isinstance(thumb, str) and thumb.startswith("http"):
                             image_urls.append(thumb)
 
-            # Carousel cards
             cards = container.get("cards")
             if isinstance(cards, list):
                 for card in cards:
@@ -414,7 +408,6 @@ class SocialCrawlAdEngine:
                         if isinstance(vu, str) and vu.startswith("http"):
                             video_urls.append(vu)
 
-        # Deduplicate preserving order
         image_urls = list(dict.fromkeys(image_urls))
         video_urls = list(dict.fromkeys(video_urls))
 
@@ -445,7 +438,11 @@ class SocialCrawlAdEngine:
         media_type = (
             "Video"
             if video_urls
-            else ("Carousel / Image" if len(image_urls) > 1 else ("Image" if image_urls else "Text / Unknown"))
+            else (
+                "Carousel"
+                if len(image_urls) > 1
+                else ("Image" if image_urls else "Text / Other")
+            )
         )
 
         return {
@@ -538,6 +535,7 @@ class SocialCrawlAdEngine:
                         or "unknown"
                     ),
                     "page_name": str(page_name),
+                    "start_date": start_dt.strftime("%Y-%m-%d"),
                     "days_active": days_active,
                     "tier": (
                         "Tier 1 (Winner)"
@@ -621,7 +619,7 @@ def run_end_to_end_competitor_pipeline(
     socialcrawl_api_key: str = "",
     manual_overrides: list[str] = None,
     max_competitors: int = 3,
-) -> tuple[pd.DataFrame, list[dict], dict]:
+) -> tuple[pd.DataFrame, pd.DataFrame, list[dict], dict]:
     brand_profile = f"Brand: {brand_name}\nDescription: {product_description}"
     extra_logs = []
 
@@ -671,7 +669,7 @@ def run_end_to_end_competitor_pipeline(
     }
 
     if not all_scored:
-        return pd.DataFrame(), discovered_competitors, diagnostics
+        return pd.DataFrame(), pd.DataFrame(), discovered_competitors, diagnostics
 
     master_df = pd.concat(all_scored, ignore_index=True)
     master_df = master_df.sort_values(
@@ -689,4 +687,4 @@ def run_end_to_end_competitor_pipeline(
         columns=["image_urls", "video_urls"], errors="ignore"
     )
     export_df.to_csv("master_creative_execution_briefs.csv", index=False)
-    return results_df, discovered_competitors, diagnostics
+    return results_df, master_df, discovered_competitors, diagnostics
