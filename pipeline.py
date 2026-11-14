@@ -1,7 +1,6 @@
 from datetime import datetime, timezone
 import json
 import os
-import time
 import pandas as pd
 from pydantic import BaseModel
 import requests
@@ -38,109 +37,175 @@ class CreativeBrief(BaseModel):
 class SocialCrawlAdEngine:
 
     def __init__(self, api_key: str):
-        self.api_key = api_key
-        self.base_url = "https://api.socialcrawl.dev/v1/ads/search"
+        self.api_key = api_key.strip()
+        # Official SocialCrawl Facebook Ad Library Search endpoint
+        self.base_url = "https://www.socialcrawl.dev/v1/facebook/adlibrary/search/ads"
 
     def fetch_page_ads(
         self, search_term: str, country: str = "US", max_pages: int = 1
     ) -> list:
-        # SocialCrawl accepts x-api-key or Bearer token header
+        if not self.api_key:
+            print("No SocialCrawl API key provided. Using mock fallback.")
+            return self._get_mock_ads(search_term)
+
         headers = {
             "x-api-key": self.api_key,
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
+            "Accept": "application/json",
         }
         params = {
             "query": search_term,
             "country": country,
             "status": "ACTIVE",
-            "limit": 25,
         }
 
         try:
             res = requests.get(
-                self.base_url, headers=headers, params=params, timeout=10
+                self.base_url, headers=headers, params=params, timeout=20
             )
 
-            # Fallback to realistic mock data if token is invalid, empty, or out of credits
             if res.status_code != 200:
                 print(
-                    f"SocialCrawl API ({res.status_code}). Bypassing with mock payload for testing."
+                    f"SocialCrawl API Error ({res.status_code}): {res.text}\n"
+                    "--> Bypassing with mock payload."
                 )
-                display_name = search_term.title()
-                return [
-                    {
-                        "id": "sc_mock_101",
-                        "page_name": display_name,
-                        "ad_delivery_start_time": "2024-01-15T00:00:00+0000",
-                        "headline": "Get 2 Whoppers for $10 This Weekend Only!",
-                        "primary_text": "Tired of paying full price for lunch? Claim your exclusive app coupon and get 2 iconic Whoppers for just $10.",
-                    },
-                    {
-                        "id": "sc_mock_102",
-                        "page_name": display_name,
-                        "ad_delivery_start_time": "2023-11-01T00:00:00+0000",
-                        "headline": "The Flame-Grilled Difference You Can Taste",
-                        "primary_text": "We don't fry, we flame-grill. Taste the real smokey flavor that has kept burger lovers coming back for 70 years.",
-                    },
-                    {
-                        "id": "sc_mock_103",
-                        "page_name": display_name,
-                        "ad_delivery_start_time": "2024-03-01T00:00:00+0000",
-                        "headline": "Upgrade Your Meals with Double Bacon & Cheese",
-                        "primary_text": "Why settle for a plain burger when you can double the flavor? Order online now and get free delivery on your first order.",
-                    },
-                ]
+                return self._get_mock_ads(search_term)
 
-            data = res.json()
-            return data.get("ads", []) or data.get("data", [])
+            payload = res.json()
+            if not payload.get("success", True):
+                print(f"SocialCrawl Envelope Error: {payload}")
+                return self._get_mock_ads(search_term)
+
+            # SocialCrawl unified list envelope puts records under data -> items
+            data_block = payload.get("data", {})
+            items = (
+                data_block.get("items", [])
+                if isinstance(data_block, dict)
+                else data_block
+            )
+
+            if not items:
+                print(f"SocialCrawl returned 0 ads for '{search_term}'. Using mock fallback.")
+                return self._get_mock_ads(search_term)
+
+            print(
+                f"SocialCrawl LIVE HIT: Fetched {len(items)} ads! "
+                f"(Credits remaining: {payload.get('credits_remaining', 'N/A')})"
+            )
+            return items
 
         except Exception as e:
-            print(f"SocialCrawl Connection Error: {e}")
-            display_name = search_term.title()
-            return [
-                {
-                    "id": "sc_mock_101",
-                    "page_name": display_name,
-                    "ad_delivery_start_time": "2024-01-15T00:00:00+0000",
-                    "headline": "Get 2 Whoppers for $10 This Weekend Only!",
-                    "primary_text": "Tired of paying full price for lunch? Claim your exclusive app coupon and get 2 iconic Whoppers for just $10.",
-                },
-                {
-                    "id": "sc_mock_102",
-                    "page_name": display_name,
-                    "ad_delivery_start_time": "2023-11-01T00:00:00+0000",
-                    "headline": "The Flame-Grilled Difference You Can Taste",
-                    "primary_text": "We don't fry, we flame-grill. Taste the real smokey flavor that has kept burger lovers coming back for 70 years.",
-                },
-            ]
+            print(f"SocialCrawl Connection Exception: {e}")
+            return self._get_mock_ads(search_term)
+
+    def _get_mock_ads(self, search_term: str) -> list:
+        display_name = search_term.title()
+        return [
+            {
+                "id": "sc_mock_101",
+                "page_name": display_name,
+                "ad_delivery_start_time": "2024-01-15T00:00:00+00:00",
+                "headline": "Get 2 Whoppers for $10 This Weekend Only!",
+                "primary_text": "Tired of paying full price for lunch? Claim your exclusive app coupon and get 2 iconic Whoppers for just $10.",
+            },
+            {
+                "id": "sc_mock_102",
+                "page_name": display_name,
+                "ad_delivery_start_time": "2023-11-01T00:00:00+00:00",
+                "headline": "The Flame-Grilled Difference You Can Taste",
+                "primary_text": "We don't fry, we flame-grill. Taste the real smokey flavor that has kept burger lovers coming back for 70 years.",
+            },
+            {
+                "id": "sc_mock_103",
+                "page_name": display_name,
+                "ad_delivery_start_time": "2024-03-01T00:00:00+00:00",
+                "headline": "Upgrade Your Meals with Double Bacon & Cheese",
+                "primary_text": "Why settle for a plain burger when you can double the flavor? Order online now and get free delivery on your first order.",
+            },
+        ]
+
+    def _parse_start_date(self, raw_date) -> datetime:
+        """Handles ISO strings, Unix timestamps, or missing dates safely."""
+        now = datetime.now(timezone.utc)
+        if not raw_date:
+            return now
+        try:
+            if isinstance(raw_date, (int, float)):
+                return datetime.fromtimestamp(raw_date, tz=timezone.utc)
+            clean_str = str(raw_date).replace("Z", "+00:00")
+            dt = datetime.fromisoformat(clean_str)
+            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        except Exception:
+            return now
 
     def score_ads(self, ads: list) -> pd.DataFrame:
         processed, now = [], datetime.now(timezone.utc)
         for ad in ads:
-            start_str = ad.get("ad_delivery_start_time") or ad.get(
-                "first_shown_time"
+            # Handle SocialCrawl unified schema + nested snapshot fields
+            snapshot = ad.get("snapshot") if isinstance(ad.get("snapshot"), dict) else {}
+
+            start_raw = (
+                ad.get("start_date")
+                or ad.get("ad_delivery_start_time")
+                or ad.get("created_at")
+                or ad.get("first_shown_time")
             )
-            if not start_str:
+            start_dt = self._parse_start_date(start_raw)
+            days_active = max((now - start_dt).days, 1)
+
+            page_name = (
+                ad.get("page_name")
+                or ad.get("advertiser_name")
+                or snapshot.get("page_name")
+                or "Unknown Competitor"
+            )
+
+            # Extract headline across possible field names
+            headline = (
+                ad.get("headline")
+                or ad.get("title")
+                or snapshot.get("title")
+                or (
+                    ad.get("ad_creative_link_titles")[0]
+                    if isinstance(ad.get("ad_creative_link_titles"), list)
+                    and ad.get("ad_creative_link_titles")
+                    else ""
+                )
+            )
+
+            # Extract primary ad body text across possible field names
+            body_obj = snapshot.get("body") if isinstance(snapshot.get("body"), dict) else {}
+            primary_text = (
+                ad.get("primary_text")
+                or ad.get("body")
+                or ad.get("text")
+                or body_obj.get("text")
+                or (
+                    ad.get("ad_creative_bodies")[0]
+                    if isinstance(ad.get("ad_creative_bodies"), list)
+                    and ad.get("ad_creative_bodies")
+                    else ""
+                )
+            )
+
+            # Skip empty shell records if neither headline nor body exists
+            if not headline and not primary_text:
                 continue
 
-            days_active = (
-                now - datetime.fromisoformat(start_str.replace("Z", "+00:00"))
-            ).days
             processed.append(
                 {
-                    "ad_id": ad.get("id") or ad.get("ad_id"),
-                    "page_name": ad.get("page_name", "Unknown Competitor"),
-                    "days_active": max(days_active, 1),
+                    "ad_id": str(ad.get("id") or ad.get("ad_archive_id") or ad.get("ad_id") or "unknown"),
+                    "page_name": page_name,
+                    "days_active": days_active,
                     "tier": (
                         "Tier 1 (Winner)"
                         if days_active >= 45
                         else "Tier 2 (Solid)" if days_active >= 21 else "Tier 3 (New)"
                     ),
-                    "headline": ad.get("headline", ""),
-                    "primary_text": ad.get("primary_text", ""),
+                    "headline": str(headline),
+                    "primary_text": str(primary_text),
                 }
             )
+
         df = pd.DataFrame(processed)
         if not df.empty:
             df = df.sort_values(by="days_active", ascending=False).reset_index(
@@ -160,7 +225,18 @@ def generate_brand_brief(ad_record: dict, brand_profile: str) -> dict:
         "You are an expert direct-response creative director. "
         "Deconstruct winning competitor ad hooks and adapt them into custom creative briefs for the target brand."
     )
-    user_prompt = f"COMPETITOR WINNING AD:\nCompetitor: {ad_record.get('page_name')}\nDays Active: {ad_record.get('days_active')}\nHeadline: {ad_record.get('headline')}\nPrimary Copy: {ad_record.get('primary_text')}\n\nMY BRAND PROFILE:\n{brand_profile}\n\nINSTRUCTIONS:\nDeconstruct and return a single valid JSON object with exact keys: extracted_hook, hook_type, emotional_trigger, adapted_hook_1, adapted_hook_2, adapted_hook_3, primary_text_draft, visual_execution_idea."
+    user_prompt = (
+        f"COMPETITOR WINNING AD:\n"
+        f"Competitor: {ad_record.get('page_name')}\n"
+        f"Days Active: {ad_record.get('days_active')}\n"
+        f"Headline: {ad_record.get('headline')}\n"
+        f"Primary Copy: {ad_record.get('primary_text')}\n\n"
+        f"MY BRAND PROFILE:\n{brand_profile}\n\n"
+        f"INSTRUCTIONS:\n"
+        f"Deconstruct and return a single valid JSON object with exact keys: "
+        f"extracted_hook, hook_type, emotional_trigger, adapted_hook_1, adapted_hook_2, "
+        f"adapted_hook_3, primary_text_draft, visual_execution_idea."
+    )
 
     response = client.chat.completions.create(
         model="openai/gpt-oss-120b",
