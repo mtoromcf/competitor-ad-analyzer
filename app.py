@@ -92,11 +92,14 @@ if submit_btn:
                 max_competitors=num_competitors,
             )
 
-        # Display live SocialCrawl status & remaining credits
         credits_left = diagnostics.get("credits_remaining")
         status_logs = diagnostics.get("status_logs", [])
         if status_logs:
-            credit_note = f" | SocialCrawl Credits Remaining: {credits_left}" if credits_left is not None else ""
+            credit_note = (
+                f" | SocialCrawl Credits Remaining: {credits_left}"
+                if credits_left is not None
+                else ""
+            )
             st.caption(" • ".join(status_logs) + credit_note)
 
         if discovered_competitors:
@@ -112,23 +115,67 @@ if submit_btn:
             st.success("Analysis Complete!")
             st.subheader("Generated Creative Briefs")
 
-            st.dataframe(results_df, width="stretch")
+            display_df = results_df.drop(
+                columns=["image_urls", "video_urls"], errors="ignore"
+            )
+            st.dataframe(display_df, width="stretch")
 
             for idx, row in results_df.iterrows():
+                media_label = row.get("media_type", "Ad")
                 with st.expander(
-                    f"Brief #{idx+1}: {row.get('page_name', 'Competitor')} (Active {row.get('days_active', 0)} Days)"
+                    f"Brief #{idx+1}: {row.get('page_name', 'Competitor')} — {media_label} (Active {row.get('days_active', 0)} Days)",
+                    expanded=(idx == 0),
                 ):
-                    st.markdown(f"**Hook Strategy:** {row.get('hook_type', 'N/A')}")
-                    st.markdown(f"**Original Competitor Hook:** {row.get('extracted_hook', 'N/A')}")
-                    st.markdown("**Adapted Hooks for Your Brand:**")
-                    st.markdown(f"- **Option 1:** {row.get('adapted_hook_1')}")
-                    st.markdown(f"- **Option 2:** {row.get('adapted_hook_2')}")
-                    st.markdown(f"- **Option 3:** {row.get('adapted_hook_3')}")
-                    st.info(f"**Visual Execution Plan:** {row.get('visual_execution_idea')}")
+                    media_col, brief_col = st.columns([1, 2])
+
+                    with media_col:
+                        st.markdown("**Original Ad Creative**")
+                        video_urls = row.get("video_urls") or []
+                        image_urls = row.get("image_urls") or []
+
+                        if video_urls:
+                            st.video(video_urls[0])
+                        elif image_urls:
+                            st.image(image_urls[0], use_container_width=True)
+                            if len(image_urls) > 1:
+                                extra_cols = st.columns(min(len(image_urls) - 1, 3))
+                                for c_idx, img_url in enumerate(image_urls[1:4]):
+                                    with extra_cols[c_idx]:
+                                        st.image(img_url, use_container_width=True)
+                        else:
+                            st.caption("No direct image or video URL exposed for this ad.")
+
+                        if row.get("headline"):
+                            st.markdown(f"**Headline:** {row.get('headline')}")
+                        if row.get("primary_text"):
+                            st.caption(row.get("primary_text"))
+
+                        meta_bits = []
+                        if row.get("cta_text"):
+                            meta_bits.append(f"**CTA:** {row.get('cta_text')}")
+                        if row.get("platforms"):
+                            meta_bits.append(f"**Platforms:** {row.get('platforms')}")
+                        if meta_bits:
+                            st.markdown(" • ".join(meta_bits))
+
+                        if row.get("link_url"):
+                            st.markdown(f"[View Destination Landing Page]({row.get('link_url')})")
+
+                    with brief_col:
+                        st.markdown(f"**Hook Strategy:** {row.get('hook_type', 'N/A')}")
+                        st.markdown(f"**Emotional Trigger:** {row.get('emotional_trigger', 'N/A')}")
+                        st.markdown(f"**Original Competitor Hook:** {row.get('extracted_hook', 'N/A')}")
+                        st.markdown("**Adapted Hooks for Your Brand:**")
+                        st.markdown(f"- **Option 1:** {row.get('adapted_hook_1')}")
+                        st.markdown(f"- **Option 2:** {row.get('adapted_hook_2')}")
+                        st.markdown(f"- **Option 3:** {row.get('adapted_hook_3')}")
+                        st.markdown("**Primary Ad Copy Draft:**")
+                        st.write(row.get("primary_text_draft", ""))
+                        st.info(f"**Visual Execution Plan:** {row.get('visual_execution_idea')}")
 
             st.download_button(
                 label="Download Briefs CSV",
-                data=results_df.to_csv(index=False),
+                data=display_df.to_csv(index=False),
                 file_name="competitor_briefs.csv",
                 mime="text/csv",
             )

@@ -89,17 +89,25 @@ def discover_competitors_with_groq(
 
         cleaned = []
         for item in competitors:
-            if isinstance(item, dict) and (item.get("company_name") or item.get("search_keyword")):
-                name = str(item.get("company_name") or item.get("search_keyword")).strip()
+            if isinstance(item, dict) and (
+                item.get("company_name") or item.get("search_keyword")
+            ):
+                name = str(
+                    item.get("company_name") or item.get("search_keyword")
+                ).strip()
                 cleaned.append(
                     {
                         "company_name": name,
-                        "search_keyword": str(item.get("search_keyword") or name).strip(),
+                        "search_keyword": str(
+                            item.get("search_keyword") or name
+                        ).strip(),
                         "fb_handle": str(
                             item.get("fb_handle")
                             or re.sub(r"[^a-zA-Z0-9.]", "", name).lower()
                         ).strip(),
-                        "reason": str(item.get("reason") or "Direct market competitor."),
+                        "reason": str(
+                            item.get("reason") or "Direct market competitor."
+                        ),
                     }
                 )
 
@@ -109,7 +117,7 @@ def discover_competitors_with_groq(
 
 
 # ==========================================
-# 3. SOCIALCRAWL AD ENGINE
+# 3. SOCIALCRAWL AD ENGINE (WITH CREATIVE MEDIA)
 # ==========================================
 class SocialCrawlAdEngine:
 
@@ -154,7 +162,10 @@ class SocialCrawlAdEngine:
                 return None
 
             payload = res.json()
-            if isinstance(payload, dict) and payload.get("credits_remaining") is not None:
+            if (
+                isinstance(payload, dict)
+                and payload.get("credits_remaining") is not None
+            ):
                 self.credits_remaining = payload.get("credits_remaining")
 
             companies = self._extract_items(payload)
@@ -168,7 +179,9 @@ class SocialCrawlAdEngine:
             for comp in companies:
                 if not isinstance(comp, dict):
                     continue
-                author = comp.get("author") if isinstance(comp.get("author"), dict) else {}
+                author = (
+                    comp.get("author") if isinstance(comp.get("author"), dict) else {}
+                )
                 name = str(
                     comp.get("name")
                     or comp.get("page_name")
@@ -183,9 +196,15 @@ class SocialCrawlAdEngine:
                     or comp.get("followers")
                     or 0
                 )
-                verified_bonus = 10_000_000 if comp.get("verification") or comp.get("is_verified") else 0
-                exact_bonus = 50_000_000 if name_lower == target_lower else (
-                    5_000_000 if target_lower in name_lower else 0
+                verified_bonus = (
+                    10_000_000
+                    if comp.get("verification") or comp.get("is_verified")
+                    else 0
+                )
+                exact_bonus = (
+                    50_000_000
+                    if name_lower == target_lower
+                    else (5_000_000 if target_lower in name_lower else 0)
                 )
                 score = exact_bonus + verified_bonus + likes
                 if score > best_score:
@@ -194,7 +213,11 @@ class SocialCrawlAdEngine:
 
             if not isinstance(best_match, dict):
                 return None
-            author = best_match.get("author") if isinstance(best_match.get("author"), dict) else {}
+            author = (
+                best_match.get("author")
+                if isinstance(best_match.get("author"), dict)
+                else {}
+            )
             page_id = (
                 best_match.get("pageId")
                 or best_match.get("page_id")
@@ -228,7 +251,9 @@ class SocialCrawlAdEngine:
         max_pages: int = 1,
     ) -> list:
         if not self.api_key:
-            self.status_logs.append(f"{search_term}: Missing SocialCrawl API key -> using mock data.")
+            self.status_logs.append(
+                f"{search_term}: Missing SocialCrawl API key -> using mock data."
+            )
             return self._get_mock_ads(search_term)
 
         clean_handle = fb_handle or re.sub(r"[^a-zA-Z0-9.]", "", search_term).lower()
@@ -266,7 +291,9 @@ class SocialCrawlAdEngine:
             return items
 
         except Exception as e:
-            self.status_logs.append(f"{search_term}: Connection exception ({e}) -> using mock data.")
+            self.status_logs.append(
+                f"{search_term}: Connection exception ({e}) -> using mock data."
+            )
             return self._get_mock_ads(search_term)
 
     def _get_mock_ads(self, search_term: str) -> list:
@@ -278,6 +305,8 @@ class SocialCrawlAdEngine:
                 "ad_delivery_start_time": "2024-01-15T00:00:00+00:00",
                 "headline": f"Exclusive Limited-Time Offer from {display_name}!",
                 "primary_text": f"Tired of overpaying? Claim your exclusive app deal from {display_name} this weekend only.",
+                "cta_text": "Order Now",
+                "publisher_platforms": ["FACEBOOK", "INSTAGRAM"],
             },
             {
                 "id": "sc_mock_102",
@@ -285,6 +314,8 @@ class SocialCrawlAdEngine:
                 "ad_delivery_start_time": "2023-11-01T00:00:00+00:00",
                 "headline": f"Why Millions Choose {display_name} Every Day",
                 "primary_text": f"Discover the signature quality and unbeatable value that has kept {display_name} fans coming back.",
+                "cta_text": "Learn More",
+                "publisher_platforms": ["FACEBOOK", "INSTAGRAM"],
             },
         ]
 
@@ -301,13 +332,142 @@ class SocialCrawlAdEngine:
         except Exception:
             return now
 
+    def _extract_media(self, ad: dict, snapshot: dict, ext: dict) -> dict:
+        """Extracts image URLs, video URLs, CTA, destination link, and platforms."""
+        image_urls = []
+        video_urls = []
+
+        # 1. Check top-level and snapshot image lists
+        for container in (ad, snapshot, ext):
+            if not isinstance(container, dict):
+                continue
+
+            # Direct image fields
+            for img_key in (
+                "image_url",
+                "thumbnail_url",
+                "original_image_url",
+                "resized_image_url",
+                "video_preview_image_url",
+            ):
+                val = container.get(img_key)
+                if isinstance(val, str) and val.startswith("http"):
+                    image_urls.append(val)
+
+            # Image arrays
+            images = container.get("images")
+            if isinstance(images, list):
+                for img in images:
+                    if isinstance(img, str) and img.startswith("http"):
+                        image_urls.append(img)
+                    elif isinstance(img, dict):
+                        for k in (
+                            "original_image_url",
+                            "resized_image_url",
+                            "url",
+                            "src",
+                        ):
+                            u = img.get(k)
+                            if isinstance(u, str) and u.startswith("http"):
+                                image_urls.append(u)
+                                break
+
+            # Direct video fields
+            for vid_key in ("video_url", "video_hd_url", "video_sd_url"):
+                val = container.get(vid_key)
+                if isinstance(val, str) and val.startswith("http"):
+                    video_urls.append(val)
+
+            # Video arrays
+            videos = container.get("videos")
+            if isinstance(videos, list):
+                for vid in videos:
+                    if isinstance(vid, str) and vid.startswith("http"):
+                        video_urls.append(vid)
+                    elif isinstance(vid, dict):
+                        for k in ("video_hd_url", "video_sd_url", "url", "src"):
+                            u = vid.get(k)
+                            if isinstance(u, str) and u.startswith("http"):
+                                video_urls.append(u)
+                                break
+                        thumb = vid.get("video_preview_image_url")
+                        if isinstance(thumb, str) and thumb.startswith("http"):
+                            image_urls.append(thumb)
+
+            # Carousel cards
+            cards = container.get("cards")
+            if isinstance(cards, list):
+                for card in cards:
+                    if not isinstance(card, dict):
+                        continue
+                    for k in (
+                        "original_image_url",
+                        "resized_image_url",
+                        "video_preview_image_url",
+                        "image_url",
+                    ):
+                        u = card.get(k)
+                        if isinstance(u, str) and u.startswith("http"):
+                            image_urls.append(u)
+                    for vk in ("video_hd_url", "video_sd_url", "video_url"):
+                        vu = card.get(vk)
+                        if isinstance(vu, str) and vu.startswith("http"):
+                            video_urls.append(vu)
+
+        # Deduplicate preserving order
+        image_urls = list(dict.fromkeys(image_urls))
+        video_urls = list(dict.fromkeys(video_urls))
+
+        link_url = (
+            snapshot.get("link_url")
+            or ad.get("link_url")
+            or ext.get("link_url")
+            or ""
+        )
+        cta_text = (
+            ext.get("cta_text")
+            or snapshot.get("cta_text")
+            or ad.get("cta_text")
+            or ""
+        )
+        raw_platforms = (
+            ad.get("publisher_platforms")
+            or snapshot.get("publisher_platforms")
+            or ext.get("publisher_platforms")
+            or []
+        )
+        platforms = (
+            ", ".join(str(p).title() for p in raw_platforms)
+            if isinstance(raw_platforms, list)
+            else str(raw_platforms)
+        )
+
+        media_type = (
+            "Video"
+            if video_urls
+            else ("Carousel / Image" if len(image_urls) > 1 else ("Image" if image_urls else "Text / Unknown"))
+        )
+
+        return {
+            "media_type": media_type,
+            "image_urls": image_urls,
+            "video_urls": video_urls,
+            "primary_image_url": image_urls[0] if image_urls else "",
+            "primary_video_url": video_urls[0] if video_urls else "",
+            "link_url": str(link_url),
+            "cta_text": str(cta_text),
+            "platforms": platforms,
+        }
+
     def score_ads(self, ads: list) -> pd.DataFrame:
         processed, now = [], datetime.now(timezone.utc)
         for ad in ads:
             if not isinstance(ad, dict):
                 continue
 
-            snapshot = ad.get("snapshot") if isinstance(ad.get("snapshot"), dict) else {}
+            snapshot = (
+                ad.get("snapshot") if isinstance(ad.get("snapshot"), dict) else {}
+            )
             author = ad.get("author") if isinstance(ad.get("author"), dict) else {}
             ext = ad.get("ext") if isinstance(ad.get("ext"), dict) else {}
 
@@ -342,7 +502,9 @@ class SocialCrawlAdEngine:
                 )
             )
 
-            body_obj = snapshot.get("body") if isinstance(snapshot.get("body"), dict) else {}
+            body_obj = (
+                snapshot.get("body") if isinstance(snapshot.get("body"), dict) else {}
+            )
             primary_text = (
                 ad.get("primary_text")
                 or ad.get("caption")
@@ -359,9 +521,13 @@ class SocialCrawlAdEngine:
                 )
             )
 
-            cta = ext.get("cta_text") or snapshot.get("cta_text") or ad.get("cta_text") or ""
+            media_info = self._extract_media(ad, snapshot, ext)
+
             if not headline and not primary_text:
-                primary_text = f"[Visual/Video Ad Creative{f' - CTA: {cta}' if cta else ''}]"
+                cta = media_info["cta_text"]
+                primary_text = (
+                    f"[{media_info['media_type']} Ad Creative{f' - CTA: {cta}' if cta else ''}]"
+                )
 
             processed.append(
                 {
@@ -380,6 +546,7 @@ class SocialCrawlAdEngine:
                     ),
                     "headline": str(headline),
                     "primary_text": str(primary_text),
+                    **media_info,
                 }
             )
 
@@ -406,6 +573,8 @@ def generate_brand_brief(ad_record: dict, brand_profile: str) -> dict:
         f"COMPETITOR WINNING AD:\n"
         f"Competitor: {ad_record.get('page_name')}\n"
         f"Days Active: {ad_record.get('days_active')}\n"
+        f"Format: {ad_record.get('media_type', 'Unknown')}\n"
+        f"CTA: {ad_record.get('cta_text', 'N/A')}\n"
         f"Headline: {ad_record.get('headline')}\n"
         f"Primary Copy: {ad_record.get('primary_text')}\n\n"
         f"MY BRAND PROFILE:\n{brand_profile}\n\n"
@@ -431,7 +600,8 @@ def generate_brand_brief(ad_record: dict, brand_profile: str) -> dict:
         print(f"Groq Brief Generation Error: {e}")
 
     return {
-        "extracted_hook": ad_record.get("headline") or ad_record.get("primary_text", "")[:80],
+        "extracted_hook": ad_record.get("headline")
+        or ad_record.get("primary_text", "")[:80],
         "hook_type": "Value & Social Proof",
         "emotional_trigger": "FOMO / Convenience",
         "adapted_hook_1": f"Switch to {brand_profile.splitlines()[0].replace('Brand: ', '')} today and see the difference.",
@@ -515,5 +685,8 @@ def run_end_to_end_competitor_pipeline(
         briefs.append({**ad, **brief})
 
     results_df = pd.DataFrame(briefs)
-    results_df.to_csv("master_creative_execution_briefs.csv", index=False)
+    export_df = results_df.drop(
+        columns=["image_urls", "video_urls"], errors="ignore"
+    )
+    export_df.to_csv("master_creative_execution_briefs.csv", index=False)
     return results_df, discovered_competitors, diagnostics
