@@ -17,7 +17,7 @@ st.set_page_config(
 
 st.title("⚡ AI Competitor Ad Intelligence & Brief Generator")
 st.markdown(
-    "Discover competitor ad strategies, score ad longevity, and generate tailored creative briefs."
+    "Enter your brand—Groq automatically identifies your top competitors, pulls their active ads via SocialCrawl, and generates creative briefs."
 )
 
 # Sidebar - Key Configuration
@@ -33,25 +33,28 @@ with st.sidebar:
         type="password",
         value=os.getenv("SOCIALCRAWL_API_KEY", ""),
     )
+    num_competitors = st.slider(
+        "Auto-Discovered Competitors", min_value=1, max_value=5, value=3
+    )
 
 # Input Form
 with st.form("brand_form"):
     col1, col2 = st.columns(2)
     with col1:
         brand_name = st.text_input(
-            "Your Brand Name", placeholder="e.g., Lumina Sleep"
+            "Your Brand Name", placeholder="e.g., McDonald's"
         )
     with col2:
         manual_override = st.text_input(
-            "Competitor Brand Search Keyword",
-            placeholder="e.g., burgerking or Nike",
+            "Manual Competitor Override (Optional)",
+            placeholder="Leave blank to auto-discover via Groq",
         )
 
     product_desc = st.text_area(
         "Product Description & Positioning",
-        placeholder="Organic magnesium night drink mix targeting busy professionals...",
+        placeholder="Fast-food burger chain famous for Big Macs, fries, and value meals...",
     )
-    submit_btn = st.form_submit_button("🚀 Run Ad Intelligence Pipeline")
+    submit_btn = st.form_submit_button("🚀 Discover Competitors & Generate Briefs")
 
 if submit_btn:
     groq_key = groq_input or os.getenv("GROQ_API_KEY")
@@ -68,23 +71,31 @@ if submit_btn:
         if socialcrawl_key:
             os.environ["SOCIALCRAWL_API_KEY"] = socialcrawl_key
 
-        with st.spinner("Fetching ad telemetry and generating briefs with Groq..."):
-            overrides = [manual_override] if manual_override else None
-            results_df = run_end_to_end_competitor_pipeline(
+        with st.spinner("Identifying competitors with Groq and scanning active ads..."):
+            overrides = [manual_override.strip()] if manual_override.strip() else None
+            results_df, discovered_competitors = run_end_to_end_competitor_pipeline(
                 brand_name=brand_name,
                 product_description=product_desc,
                 socialcrawl_api_key=socialcrawl_key or "",
                 manual_overrides=overrides,
+                max_competitors=num_competitors,
             )
+
+        if discovered_competitors:
+            st.subheader("🎯 Targeted Competitors")
+            comp_cols = st.columns(len(discovered_competitors))
+            for idx, comp in enumerate(discovered_competitors):
+                with comp_cols[idx]:
+                    st.info(
+                        f"**{comp.get('company_name')}**\n\n{comp.get('reason', '')}"
+                    )
 
         if results_df is not None and not results_df.empty:
             st.success("Analysis Complete!")
             st.subheader("📋 Generated Creative Briefs")
 
-            # Dataframe display with modern width configuration
             st.dataframe(results_df, width="stretch")
 
-            # Interactive expanders per brief
             for idx, row in results_df.iterrows():
                 with st.expander(
                     f"Brief #{idx+1}: {row.get('page_name', 'Competitor')} (Active {row.get('days_active', 0)} Days)"
