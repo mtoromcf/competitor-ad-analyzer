@@ -319,18 +319,75 @@ class SocialCrawlAdEngine:
             },
         ]
 
-    def _parse_start_date(self, raw_date) -> datetime:
-        now = datetime.now(timezone.utc)
-        if not raw_date:
-            return now
+    def _parse_start_date(self, raw_date) -> datetime | None:
+        if raw_date is None or raw_date == "":
+            return None
         try:
-            if isinstance(raw_date, (int, float)):
-                return datetime.fromtimestamp(raw_date, tz=timezone.utc)
-            clean_str = str(raw_date).replace("Z", "+00:00")
+            # Handle integer/float or numeric string Unix timestamps (seconds or milliseconds)
+            if isinstance(raw_date, (int, float)) or (
+                isinstance(raw_date, str) and raw_date.strip().isdigit()
+            ):
+                ts = float(raw_date)
+                if ts > 1e12:  # milliseconds -> seconds
+                    ts /= 1000.0
+                if ts > 1e8:  # valid post-1973 epoch timestamp
+                    return datetime.fromtimestamp(ts, tz=timezone.utc)
+
+            clean_str = str(raw_date).strip()
+            clean_str = re.sub(r"\s*(UTC|GMT)$", "+00:00", clean_str)
+            clean_str = clean_str.replace("Z", "+00:00")
+
             dt = datetime.fromisoformat(clean_str)
             return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
         except Exception:
-            return now
+            try:
+                parsed_ts = pd.to_datetime(raw_date, utc=True, errors="coerce")
+                if pd.notna(parsed_ts):
+                    return parsed_ts.to_pydatetime()
+            except Exception:
+                pass
+            return None
+
+    def _extract_start_date(self, ad: dict, snapshot: dict, ext: dict) -> datetime:
+        """Searches all top-level and nested containers for the ad's start timestamp."""
+        date_keys = (
+            "start_date",
+            "startDate",
+            "start_date_string",
+            "startDateString",
+            "ad_delivery_start_time",
+            "adDeliveryStartTime",
+            "creation_time",
+            "creationTime",
+            "published_at",
+            "publishedAt",
+            "created_at",
+            "createdAt",
+            "date",
+        )
+        for container in (ad, snapshot, ext):
+            if not isinstance(container, dict):
+                continue
+            for key in date_keys:
+                val = container.get(key)
+                if isinstance(val, dict):
+                    val = val.get("timestamp") or val.get("date") or val.get("value")
+                parsed = self._parse_start_date(val)
+                if parsed is not None:
+                    return parsed
+
+        # Deep fallback: scan any key containing 'start' or 'creat' across containers
+        for container in (ad, snapshot, ext):
+            if not isinstance(container, dict):
+                continue
+            for k, v in container.items():
+                if any(token in str(k).lower() for token in ("start", "creat", "publish")):
+                    if isinstance(v, (str, int, float)):
+                        parsed = self._parse_start_date(v)
+                        if parsed is not None:
+                            return parsed
+
+        return datetime.now(timezone.utc)
 
     def _extract_media(self, ad: dict, snapshot: dict, ext: dict) -> dict:
         """Extracts image URLs, video URLs, CTA, destination link, and platforms."""
@@ -468,14 +525,7 @@ class SocialCrawlAdEngine:
             author = ad.get("author") if isinstance(ad.get("author"), dict) else {}
             ext = ad.get("ext") if isinstance(ad.get("ext"), dict) else {}
 
-            start_raw = (
-                ad.get("start_date")
-                or ad.get("ad_delivery_start_time")
-                or ad.get("published_at")
-                or ad.get("created_at")
-                or ext.get("start_date")
-            )
-            start_dt = self._parse_start_date(start_raw)
+            start_dt = self._extract_start_date(ad, snapshot, ext)
             days_active = max((now - start_dt).days, 1)
 
             page_name = (
