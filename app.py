@@ -15,7 +15,7 @@ st.set_page_config(
     page_title="Competitor Ad Intelligence", layout="wide"
 )
 
-st.title("Competitor ad analyzer")
+st.title("Competitor Ad Analyzer")
 st.markdown(
     "Enter your brand—Groq automatically identifies your top competitors, pulls their active ads via SocialCrawl, and generates creative briefs."
 )
