@@ -1,6 +1,12 @@
+import importlib.util
 import os
+from pathlib import Path
 import pandas as pd
 import streamlit as st
+
+st.set_page_config(
+    page_title="Competitor Ad Intelligence", layout="wide"
+)
 
 # Automatically bridge Streamlit Secrets to OS environment variables
 if "GROQ_API_KEY" in st.secrets:
@@ -9,13 +15,18 @@ if "GROQ_API_KEY" in st.secrets:
 if "SOCIALCRAWL_API_KEY" in st.secrets:
     os.environ["SOCIALCRAWL_API_KEY"] = st.secrets["SOCIALCRAWL_API_KEY"]
 
-from pipeline import run_end_to_end_competitor_pipeline
 
-st.set_page_config(
-    page_title="Competitor Ad Intelligence", layout="wide"
-)
+def load_pipeline_function():
+    pipeline_path = Path(__file__).parent / "pipeline.py"
+    spec = importlib.util.spec_from_file_location("ad_pipeline_mod", pipeline_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.run_end_to_end_competitor_pipeline
 
-st.title("Competitor Ad Analyzer")
+
+run_end_to_end_competitor_pipeline = load_pipeline_function()
+
+st.title("Competitor ad analyzer")
 st.markdown(
     "Enter your brand—Groq automatically identifies your top competitors, pulls their active ads via SocialCrawl, and generates creative briefs."
 )
