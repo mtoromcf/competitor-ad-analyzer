@@ -15,7 +15,7 @@ st.set_page_config(
     page_title="Competitor Ad Intelligence", layout="wide"
 )
 
-st.title("AI Competitor Ad Intelligence & Brief Generator")
+st.title("Competitor ad analyzer")
 st.markdown(
     "Enter your brand—Groq automatically identifies your top competitors, pulls their active ads via SocialCrawl, and generates creative briefs."
 )
@@ -51,10 +51,10 @@ with st.form("brand_form"):
         )
 
     product_desc = st.text_area(
-        "Product Description & Positioning",
+        "Product Description",
         placeholder="Fast-food burger chain famous for Big Macs, fries, and value meals...",
     )
-    submit_btn = st.form_submit_button("Discover Competitors & Generate Briefs")
+    submit_btn = st.form_submit_button("Generate Briefs")
 
 if submit_btn:
     groq_key = groq_input or os.getenv("GROQ_API_KEY")
