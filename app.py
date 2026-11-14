@@ -302,6 +302,19 @@ if submit_btn:
             )
             st.caption(" • ".join(status_logs) + credit_note)
 
+        # Global warning banner if any mock ads were substituted
+        if master_df is not None and not master_df.empty and "ad_id" in master_df.columns:
+            mock_rows = master_df[
+                master_df["ad_id"].astype(str).str.startswith("sc_mock")
+            ]
+            if not mock_rows.empty:
+                mocked_brands = ", ".join(sorted(mock_rows["page_name"].unique()))
+                st.warning(
+                    f"Simulated Mock Data Warning: Live SocialCrawl ads were unavailable for {mocked_brands} "
+                    f"(due to missing/exhausted API credits or 0 active Meta ads found). Placeholder mock ads "
+                    f"(`sc_mock`) were substituted for those competitors."
+                )
+
         if discovered_competitors:
             st.subheader("Targeted Competitors")
             comp_cols = st.columns(len(discovered_competitors))
@@ -326,11 +339,17 @@ if submit_btn:
             st.dataframe(display_df, width="stretch")
 
             for idx, row in results_df.iterrows():
-                media_label = row.get("media_type", "Ad")
+                is_mock = str(row.get("ad_id", "")).startswith("sc_mock")
+                media_label = "Simulated Mock Ad" if is_mock else row.get("media_type", "Ad")
                 with st.expander(
                     f"Brief #{idx+1}: {row.get('page_name', 'Competitor')} — {media_label} (Active {row.get('days_active', 0)} Days)",
                     expanded=(idx == 0),
                 ):
+                    if is_mock:
+                        st.warning(
+                            "Mock Ad Notice: This creative brief was generated from simulated fallback data (`sc_mock`) rather than a live Meta Ad Library record."
+                        )
+
                     media_col, brief_col = st.columns([1, 2])
 
                     with media_col:
